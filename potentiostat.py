@@ -10,9 +10,8 @@
 
 
 import time
-import smbus
-from smbus import SMBus
 import sys
+import daqhats as hats
 
 from Tkinter import *
 
@@ -117,15 +116,19 @@ def initGraph(data):
 		[],"Current vs. Voltage",(data.margin,data.height/2,
 		data.width-data.margin,data.height-data.margin))
 
-def getreading(data,adc_address,adc_channel):
-	data.bus.write_byte(adc_address, adc_channel)
-	time.sleep(data.restTime)
-	reading = data.bus.read_i2c_block_data(adc_address, adc_channel, data.numBytes)
-	sign = (reading[0]&0x40)>>6
-	raw = (((reading[0]&0x3F)<<16)+(reading[1]<<8)+(reading[2]&0xC0))>>6
-	print(reading)
-	volts = raw/65536.0*data.vref
-	return (volts-data.vref) if sign else volts
+# def getreading(data,adc_address,adc_channel):
+# 	data.bus.write_byte(adc_address, adc_channel)
+# 	time.sleep(data.restTime)
+# 	reading = data.bus.read_i2c_block_data(adc_address, adc_channel, data.numBytes)
+# 	sign = (reading[0]&0x40)>>6
+# 	raw = (((reading[0]&0x3F)<<16)+(reading[1]<<8)+(reading[2]&0xC0))>>6
+# 	print(reading)
+# 	volts = raw/65536.0*data.vref
+# 	return (volts-data.vref) if sign else volts
+
+def getreading(data,channel):
+	raw = data.board.a_in_read(channel,0x0001)-data.board.a_in_read(channel+1,0x0001)
+	return raw*20/4096
 
 # while(True):
 # 	Ch0value = getreading(address, channel0)
@@ -136,20 +139,29 @@ def getreading(data,adc_address,adc_channel):
 # 	sys.stdout.flush()
 # 	time.sleep(measTime)
 
+# entry = hats.hat_list(filter_by_id = hats.HatIDs.ANY)[0]
+# if entry.id == hats.HatIDs.MCC_118:
+# 	print("Board {}: MCC 118".format(entry.address))
+# 	board = hats.mcc118(entry.address)
+# 	for channel in range(board.info().NUM_AI_CHANNELS):
+# 		value = board.a_in_read(channel)
+# 		print("Ch {0}: {1:.3f}".format(channel, value))	
+
 def init(data):
 	data.margin = 5
 	data.graph = initGraph(data)
-	data.bus = SMBus(1)
+	data.board = hats.mcc118(hats.hat_list(filter_by_id = hats.HatIDs.ANY)[0].address)
 
-	data.address = 0b1110110 # HIGH HIGH HIGH 0x76
-
-	data.channels = [0xA0,0xA1]
+	data.channels = [0,2]
+	data.Ch0values = []
+	data.Ch2values = []
 
 	data.vref = 2.5
 
-	data.numBytes = 3
-	# data.measTime = 0.2
-	data.restTime = 0.15
+	# data.numBytes = 3
+	# data.measTime = .5
+	# data.restTime = 0.15
+	data.count = 0
 
 	data.lastReading = time.time()
 
@@ -157,15 +169,30 @@ def mousePressed(event,data): pass
 
 def keyPressed(event,data): pass
 
+def average(lst):
+	res = 0
+	count = 0
+	for elem in lst:
+		res += elem
+		count += 1
+	return res/count
+
 def timerFired(data): 
-	# if time.time()-data.lastReading > data.measTime:
-	Ch0value = getreading(data, data.address, data.channels[0])
-	time.sleep(data.restTime)
-	Ch2value = 200*getreading(data, data.address, data.channels[1]) # depends on gain
-	# print("Voltage %2.2f, Current %2.2f\n" % (Ch0value, Ch2value))
-	data.graph.addPoint((Ch0value,Ch2value))
-	time.sleep(data.restTime)
+	data.Ch0values.append(getreading(data, data.channels[0]))
+	# time.sleep(data.restTime)
+	data.Ch2values.append(200*getreading(data, data.channels[1])) # depends on gain
+	# data.lastReading = time.time()
+	# time.sleep(data.restTime)
 	sys.stdout.flush()
+	if data.count == 10:
+		Ch0value = average(data.Ch0values)
+		Ch2value = average(data.Ch2values)
+		print("Voltage %2.2f, Current %2.2f\n" % (Ch0value, Ch2value))
+		data.graph.addPoint((Ch0value,Ch2value))
+		data.Ch0values = []
+		data.Ch2values = []
+		data.count = -1
+	data.count += 1
 
 def redrawAll(canvas,data):
 	data.graph.drawGraph(canvas)
@@ -199,7 +226,7 @@ def runUI(width=300, height=300):
     data = Struct()
     data.width = width
     data.height = height
-    data.timerDelay = 100 # milliseconds
+    data.timerDelay = 20 # milliseconds
     init(data)
     # create the root and the canvas
     root = Tk()
@@ -215,3 +242,10 @@ def runUI(width=300, height=300):
     root.mainloop()  # blocks until window is closed
 
 runUI(800,800)
+# entry = hats.hat_list(filter_by_id = hats.HatIDs.ANY)[0]
+# if entry.id == hats.HatIDs.MCC_118:
+# 	print("Board {}: MCC 118".format(entry.address))
+# 	board = hats.mcc118(entry.address)
+# 	for channel in range(board.info().NUM_AI_CHANNELS):
+# 		value = board.a_in_read(channel)
+# 		print("Ch {0}: {1:.3f}".format(channel, value))	
