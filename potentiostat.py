@@ -123,7 +123,7 @@ def getreading(data,adc_address,adc_channel):
 	reading = data.bus.read_i2c_block_data(adc_address, adc_channel, data.numBytes)
 	sign = (reading[0]&0x40)>>6
 	raw = (((reading[0]&0x3F)<<16)+(reading[1]<<8)+(reading[2]&0xC0))>>6
-	print(reading)
+	# print(reading)
 	volts = raw/65536.0*data.vref
 	return (volts-data.vref) if sign else volts
 
@@ -162,7 +162,8 @@ def timerFired(data):
 	Ch0value = getreading(data, data.address, data.channels[0])
 	time.sleep(data.restTime)
 	Ch2value = 200*getreading(data, data.address, data.channels[1]) # depends on gain
-	# print("Voltage %2.2f, Current %2.2f\n" % (Ch0value, Ch2value))
+	print("Voltage %2.2f, Current %2.2f\n" % (Ch0value, Ch2value))
+	# Ch2value = 200
 	data.graph.addPoint((Ch0value,Ch2value))
 	time.sleep(data.restTime)
 	sys.stdout.flush()
