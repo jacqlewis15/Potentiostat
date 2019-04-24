@@ -20,6 +20,7 @@ import time
 import win32com.client as client
 import os
 import math
+import serial
 
 from Tkinter import *
 import tkFileDialog
@@ -249,6 +250,8 @@ def init(data):
     data.running = False
     data.count = 0
 
+    data.ser = serial.Serial('COM8', 9600)
+
     data.editing = [False]*6
     data.pipe = [False]*6
 
@@ -373,7 +376,7 @@ def getContents(data):
             line += str(data.dataset[j][i]) + ", "
         contents += line + "\n"
     # removes extra formatting from end of string
-    return contents[:-3]
+    return contents[:-3] + "\n" + data.O2vals
 
 # This function writes all data to the specified file or does nothing
 # if there is no data or no specified file.
@@ -392,6 +395,13 @@ def stop(data):
     data.complete = True
     try: data.pstat.Close()
     except: pass
+    data.ser.write("send")
+    num = int(data.ser.readline()[:2])
+    count = 0
+    data.O2vals = "O2,vals"
+    while(count < num):
+        data.O2vals += "," + data.ser.readline()[:-2]
+        count += 1
     save(data)
 
 # This function reads voltage data from a specified file to use in the
@@ -416,6 +426,7 @@ def press(data,idx):
             data.graph = initGraph(data)
             data.running = True
             data.complete = True
+            data.ser.write("start")
         else: # stops potentiostat cycles
             stop(data)
     # edits the three text boxes
@@ -468,7 +479,7 @@ def keyPressed(event,data):
             except: tmp1,tmp2 = None,None
             # if not valid input, resets input blocks
             if idx == 1: 
-                data.sRate = tmp1
+                data.sRate = tmp1/2.0
                 if data.sRate == None: data.bText[0][3] = ""
             else:
                 data.cycles = tmp2
@@ -497,7 +508,6 @@ def timerFired(data):
             xlim,ylim = ranges(points)
             data.graph.updateLimits(xlim,ylim)
             data.first = False
-        print(data.cyclesRun)
         # stops potentiostat when desired number of cycles is reached
         if data.cycles != None and data.cyclesRun == data.cycles:
             stop(data)
@@ -524,10 +534,15 @@ def drawButtons(canvas,data):
         if i == 0: # top row has only the start/stop button
             canvas.create_rectangle(left,bheight/2,right,1.5*bheight,
                 fill="white")
-            if data.running: text = "Stop"
-            else: text = "Start"
+            if data.running:
+                text = "Stop"
+                text2 = "Finished Cycle " + str(data.cyclesRun)
+            else: text,text2 = "Start",""
             canvas.create_text(left+bwidth/2,bheight,text=text,
                 font="Arial 12 bold")
+            canvas.create_text(data.width-bwidth/4,bheight,
+                text=text2,font="Arial 12 bold",anchor="e")
+            
         else: # all other rows have 4 buttons
             for j in range(4):
                 canvas.create_rectangle(bwidth*(0.2*(j+1)+j),
